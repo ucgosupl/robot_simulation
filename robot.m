@@ -49,7 +49,7 @@ state = zeros(3, t_size + 1);
 state(:,1) = x0;
 
 % state linearized
-state_lin = zeros(5, t_size + 1);
+state_lin = zeros(6, t_size + 1);
 state_lin(1:3, 1) = x0;
 
 % position of wheels
@@ -64,61 +64,67 @@ enc = zeros(2, t_size + 1);
 
 % gyro readings
 gyro = zeros(1, t_size);
+gyro_bias = 2.9;
 
 % EKF params
-C = [0      0       0       dt      0;     % velocity calculated based on encoders
-     0      0       0       0       dt;    % angular velocity calculated based on encoders
-     0      0       0       0       1;     % angular velocity calculated based on gyroscope
+C = [0      0       0       dt      0       0;     % velocity calculated based on encoders
+     0      0       0       0       dt      0;     % angular velocity calculated based on encoders
+     0      0       0       0       1       1;     % angular velocity calculated based on gyroscope
     ];
  
-enc_sdev = 1;
-enc_ang_sdev = 2;
-gyro_sdev = 5;
+enc_sdev = 0.1;
+enc_ang_sdev = 20;
+gyro_sdev = 1;
+bias_sdev = 3;
 
 statex_sdev = 1;
 statey_sdev = 1;
 statealfa_sdev = 1;
-statev_sdev = 5;
-stateomega_sdev = 20;
+statev_sdev = 50;
+stateomega_sdev = 50;
+statebias_sdev = 5;
 
 varvx = ((statex_sdev)^2)*dt;
 varvy = ((statey_sdev)^2)*dt;
 varvalfa = ((statealfa_sdev)^2)*dt;
 varv = ((statev_sdev)^2)*dt;
 varomega = ((stateomega_sdev)^2)*dt;
+varbias = ((statebias_sdev)^2)*dt;
 
-varwv_enc = ((enc_sdev)^2)*dt;
-varwalfa_enc = ((enc_ang_sdev)^2)*dt;
-varwalfa_gyro = ((gyro_sdev)^2)*dt;
+varwv_enc = ((10*enc_sdev)^2)*dt;
+varwalfa_enc = ((enc_ang_sdev/dt)^2);
+varwalfa_gyro = ((gyro_sdev)^2) + ((bias_sdev)^2);
 
  % V - macierz szumu procesu
  V = [
-       varvx    0       0           0       0;
-       0        varvy	0           0       0;
-       0        0       varvalfa    0       0;
-       0        0       0           varv    0;
-       0        0       0           0       varomega;
+       varvx    0       0           0       0           0;
+       0        varvy	0           0       0           0;
+       0        0       varvalfa    0       0           0;
+       0        0       0           varv    0           0;
+       0        0       0           0       varomega    0;
+       0        0       0           0       0           varbias;
      ];
  
  % W - macierz szumu pomiaru
  W = [
-       varwv_enc*dt    0                0;
-       0               varwalfa_enc*dt  0;
-       0                0               varwalfa_gyro;
+       varwv_enc    	0                   0;
+       0                10*varwalfa_enc      0;
+       0                0                   varwalfa_gyro;
      ];
 
  Y = zeros(3, t_size + 1);
- X = zeros(5, t_size + 1);
+ X = zeros(6, t_size + 1);
  
- xpri = [x0; 0; 0;];
+ xpri = [x0; 0; 0; 5;];
  xpost = xpri;
  
  Ppri = [
-            1       0       0       0       0;
-            0       1       0       0       0;
-            0       0       1       0       0;
-            0       0       0       5       0;
-            0       0       0       0       5;
+            1       0       0       0       0       0;
+            0       1       0       0       0       0;
+            0       0       1       0       0       0;
+            0       0       0       3       0       0;
+            0       0       0       0       3       0;
+            0       0       0       0       0       1000;
         ];
  Ppost = Ppri;
  
@@ -139,7 +145,7 @@ for i = 1:t_size
         encoder_left(i) = dir_left * (sqrt(sum((wheel_left(:,i) - wheel_left(:,i - 1)).^ 2))) + randn(1)*enc_sdev;
         encoder_right(i) = dir_right * (sqrt(sum((wheel_right(:,i) - wheel_right(:,i - 1)) .^ 2))) + randn(1)*enc_sdev;
         
-        gyro(i) = (state(3, i) - state(3, i - 1))/dt + randn(1)*gyro_sdev;
+        gyro(i) = (state(3, i) - state(3, i - 1))/dt + randn(1)*gyro_sdev + gyro_bias;
     end
     
     % State equations:
@@ -151,8 +157,8 @@ for i = 1:t_size
     state(3,i + 1) = state(3, i) + input(2, i) * dt;
     
     % Velocities from encoders
-    v_enc = (encoder_left(i) + encoder_right(i))/2;
-    omega_enc = (encoder_left(i) - encoder_right(i))/L;
+    v_enc = (encoder_left(i) + encoder_right(i))/2 + 10*randn(1)*enc_sdev;
+    omega_enc = rad2deg((encoder_right(i) - encoder_left(i))/L/dt);
     
     enc(:,i) = [v_enc; omega_enc];
     
@@ -170,6 +176,7 @@ for i = 1:t_size
     xpri(3) = xpost(3) + xpost(5) * dt;
     xpri(4) = xpost(4);
     xpri(5) = xpost(5);
+    xpri(6) = xpost(6);
     
     Ppri = A*Ppost*A' + V;
     e = Y(:,i) - C*xpri;
@@ -177,7 +184,7 @@ for i = 1:t_size
     K = Ppri*C'*S^-1;
     xpost = xpri + K*e;
     % Joseph formula for elimination of subtraction of covariance matrix.
-    Ppost = (eye(5)-K*C)*Ppri*(eye(5)-K*C)' + K*W*K';
+    Ppost = (eye(6)-K*C)*Ppri*(eye(6)-K*C)' + K*W*K';
     
     X(:,i) = xpost;
 end
@@ -242,3 +249,9 @@ plot(t, input(2,:), t, X(5,:), 'r')
 title('Robot angular velocity + EKF estimation')
 xlabel('time [s]')
 ylabel('angular velocity [dps]')
+
+figure
+plot(t, t, X(6,:))
+title('Gyro Bias estimated by EKF')
+xlabel('time [s]')
+ylabel('gyro bias [dps]')
