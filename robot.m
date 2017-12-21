@@ -73,16 +73,16 @@ C = [0      0       0       dt      0       0;     % velocity calculated based o
     ];
  
 enc_sdev = 0.1;
-enc_ang_sdev = 20;
-gyro_sdev = 1;
-bias_sdev = 3;
+enc_ang_sdev = 1;
+gyro_sdev = 5;
+bias_sdev = 1;
 
 statex_sdev = 1;
 statey_sdev = 1;
 statealfa_sdev = 1;
 statev_sdev = 50;
 stateomega_sdev = 50;
-statebias_sdev = 5;
+statebias_sdev = 0.5;
 
 varvx = ((statex_sdev)^2)*dt;
 varvy = ((statey_sdev)^2)*dt;
@@ -124,7 +124,7 @@ varwalfa_gyro = ((gyro_sdev)^2) + ((bias_sdev)^2);
             0       0       1       0       0       0;
             0       0       0       3       0       0;
             0       0       0       0       3       0;
-            0       0       0       0       0       1000;
+            0       0       0       0       0       50;
         ];
  Ppost = Ppri;
  
@@ -251,7 +251,7 @@ xlabel('time [s]')
 ylabel('angular velocity [dps]')
 
 figure
-plot(t, t, X(6,:))
+plot(t, X(6,:))
 title('Gyro Bias estimated by EKF')
 xlabel('time [s]')
 ylabel('gyro bias [dps]')
